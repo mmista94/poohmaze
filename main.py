@@ -1,102 +1,94 @@
-import random
-from collections import deque
+import pygame
+from maze import maze_factory
+import video
+import chars
 
+pygame.init()
 
-class Cell:
+maze_config = {
+    'rows':10,
+    'columns':10
+}
+
+SCREEN_LENGTH, SCREEN_WIDTH = 800, 900
+# dims = (SCREEN_LENGTH, SCREEN_WIDTH)
+
+class App:
 
     def __init__(self) -> None:
-        self.borders = [1,1,1,1]
-        self.was_traversed: bool = False
+        #self.init_display(SCREEN_LENGTH, SCREEN_WIDTH)
+        self.screen = self.init_display(SCREEN_LENGTH, SCREEN_WIDTH)
+        self.maze = Maze(maze_config, 'standard')
+        self.all_sprites = pygame.sprite.Group()
+        self.borders_sprites = pygame.sprite.Group()
+        
+        self.run()
 
-    def carve_passage(self, direction) -> None:
-        mapper = {
-            't':0,
-            'b':1,
-            'l':2,
-            'r':3
-        }
-        self.borders[mapper[direction]] = 0
+    def init_display(self, length, width):
+        size = (width, length)
+        return pygame.display.set_mode(size)
 
-    @staticmethod
-    def opposite_direction(direction) -> str:
-        mapper = {
-            't':'b',
-            'b':'t',
-            'r':'l',
-            'l':'r'
-        }
-        return mapper[direction]
-    
-
+    def run(self):
+        maze_cells = self.maze.graphics.draw_maze_input()
+        # self.screen.blits(maze_cells)
+        player = chars.Player()
+        self.all_sprites.add(player)
+        playersize =(
+            0.65*SCREEN_LENGTH/maze_config['rows'],
+            0.65*SCREEN_WIDTH/maze_config['columns']
+        )
+        player.scale(playersize)
+        for border in self.maze.sprites_borders:
+            self.borders_sprites.add(border)
+            self.all_sprites.add(border)
+        for entity in self.borders_sprites:
+            self.screen.blit(entity.surf, entity.rect)
+        # self.screen.blit(player.surf, (30,30))
+        running = True
+        while running:
+            # Did the user click the window close button?
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+            # Get the set of keys pressed and check for user input
+            pressed_keys = pygame.key.get_pressed()
+            player.update(pressed_keys)
+            self.screen.blits(maze_cells)
+            for entity in self.all_sprites:
+                self.screen.blit(entity.surf, entity.rect)
+            # maze_cells = self.maze.graphics.draw_maze_input()
+            # self.screen.blits(maze_cells)
+            if pygame.sprite.spritecollide(player, self.borders_sprites, False, pygame.sprite.collide_mask):
+                # If so, remove the player
+                player.kill()
+                print('test')
+            # pygame.display.update()
+            pygame.display.flip()
+        
 class Maze:
 
-    def __init__(self, rows: int, columns: int) -> None:
-        self.rows = rows
-        self.columns = columns
-        self._grid = [[Cell() for _ in range(columns)] for _ in range(rows)]
-        self.generate_maze()
+    def __init__(self, maze_config, maze_type='standard') -> None:
+        self.maze = maze_factory(maze_type, maze_config)
+        self.graphics = video.Maze()
+        self.sprites_borders = []
+        self.graphics.init_cells(
+            SCREEN_WIDTH,
+            SCREEN_LENGTH,
+            self.maze.columns,
+            self.maze.rows
+        )
+        for i in range(self.maze.rows):
+            for j in range(self.maze.columns):
+                print(f'cell {i}, {j}', self.maze.grid(i, j))
 
-    def grid(self, i, j) -> Cell:
-        return self._grid[i][j]
+        for i in range(self.maze.rows):
+            for j in range(self.maze.columns):
+                print(f'filling cell {i}, {j}')
+                borders = self.maze.grid(i, j).get_borders()
+                l = self.graphics.cells(i, j).prepare_borders(borders, 7.5)
+                for sprite in l:
+                    self.sprites_borders.append(sprite)
 
-    def generate_maze(self):
-        location = random.randint(0, self.rows-1), random.randint(0, self.columns-1)
-        k = 0
-        moves = deque()
-        moves.append(location)
-        while k < self.rows*self.columns:
-            # Check if neighboring cells are suitable
-            if good_neighbors:=self.check_neighboring_cells(*location):
-                location = self._carve_passages(location, good_neighbors)
-                moves.append(location)
-                k += 1
-            else:
-                moves.pop()
-                location = moves[-1]
-
-    def cell_offset(self, location, direction):
-        if direction=="t":
-            offset = 1, 0
-        elif direction=='l':
-            offset = 0, -1
-        elif direction=='r':
-            offset = 0, 1
-        elif direction=='b':
-            offset = -1, 0
-        return location[0] + offset[0], location[1] + offset[1]
-
-    def _carve_passages(self, location, good_neighbors) -> tuple:
-            direction = random.choice(good_neighbors)
-            self.grid(*location).carve_passage(direction)
-            adjacent_location = self.cell_offset(location, direction)
-            opposite_direction = Cell.opposite_direction(direction)
-            self.grid(*adjacent_location).carve_passage(opposite_direction)
-            self.grid(*adjacent_location).was_traversed = True
-            return adjacent_location
-    
-    def check_neighboring_cells(self, i, j):
-        adjacent_cells = []
-        if i > 0:
-            n_cell = self.grid(i-1, j) 
-            if not n_cell.was_traversed:
-                adjacent_cells.append('b')
-        if i < self.rows-1:
-            n_cell = self.grid(i+1, j)
-            if not n_cell.was_traversed:
-                adjacent_cells.append('t')
-        if j > 0:
-            n_cell = self.grid(i, j-1)
-            if not n_cell.was_traversed:
-                adjacent_cells.append('l')
-        if j < self.columns-1:
-            n_cell = self.grid(i, j+1)
-            if not n_cell.was_traversed:
-                adjacent_cells.append('r')
-        return adjacent_cells
 
 if __name__=='__main__':
-    maze = Maze(5,7)
-    for i in maze._grid:
-        for j in i:
-            print(j)
-
+    App()
