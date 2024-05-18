@@ -10,7 +10,7 @@ maze_config = {
     'columns':10
 }
 
-SCREEN_LENGTH, SCREEN_WIDTH = 800, 900
+SCREEN_LENGTH, SCREEN_WIDTH = 1000, 1200
 # dims = (SCREEN_LENGTH, SCREEN_WIDTH)
 
 class App:
@@ -30,6 +30,7 @@ class App:
 
     def run(self):
         maze_cells = self.maze.graphics.draw_maze_input()
+        c = self.maze.graphics.cells(0, 0)
         # self.screen.blits(maze_cells)
         player = chars.Player()
         self.all_sprites.add(player)
@@ -38,6 +39,9 @@ class App:
             0.65*SCREEN_WIDTH/maze_config['columns']
         )
         player.scale(playersize)
+        w = c.width/2    
+        h = c.height/2
+        player.rect.center = (w, h)
         for border in self.maze.sprites_borders:
             self.borders_sprites.add(border)
             self.all_sprites.add(border)
@@ -52,16 +56,34 @@ class App:
                     running = False
             # Get the set of keys pressed and check for user input
             pressed_keys = pygame.key.get_pressed()
-            player.update(pressed_keys)
+            player.horizontal_update(pressed_keys)
             self.screen.blits(maze_cells)
             for entity in self.all_sprites:
                 self.screen.blit(entity.surf, entity.rect)
             # maze_cells = self.maze.graphics.draw_maze_input()
             # self.screen.blits(maze_cells)
-            if pygame.sprite.spritecollide(player, self.borders_sprites, False, pygame.sprite.collide_mask):
+            collisions_horizontal = pygame.sprite.spritecollide(
+                player, 
+                self.borders_sprites, 
+                False, 
+                pygame.sprite.collide_mask
+            )
+            if collisions_horizontal:
                 # If so, remove the player
-                player.kill()
-                print('test')
+                player.horizontal_block(pressed_keys)
+            
+            player.vertical_update(pressed_keys)
+            for entity in self.all_sprites:
+                self.screen.blit(entity.surf, entity.rect)
+            collisions_vertical = pygame.sprite.spritecollide(
+                player, 
+                self.borders_sprites, 
+                False, 
+                pygame.sprite.collide_mask
+            )
+            if collisions_vertical:
+                # If so, remove the player
+                player.vertical_block(pressed_keys)
             # pygame.display.update()
             pygame.display.flip()
         
@@ -79,11 +101,6 @@ class Maze:
         )
         for i in range(self.maze.rows):
             for j in range(self.maze.columns):
-                print(f'cell {i}, {j}', self.maze.grid(i, j))
-
-        for i in range(self.maze.rows):
-            for j in range(self.maze.columns):
-                print(f'filling cell {i}, {j}')
                 borders = self.maze.grid(i, j).get_borders()
                 l = self.graphics.cells(i, j).prepare_borders(borders, 7.5)
                 for sprite in l:

@@ -28,6 +28,18 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
 
+    def horizontal_update(self, pressed_keys):
+        if pressed_keys[K_UP]:
+            self.rect.move_ip(0, -1)
+        if pressed_keys[K_DOWN]:
+            self.rect.move_ip(0, 1)
+
+    def vertical_update(self, pressed_keys):
+        if pressed_keys[K_LEFT]:
+            self.rect.move_ip(-1, 0)
+        if pressed_keys[K_RIGHT]:
+            self.rect.move_ip(1, 0)
+
     # Move the sprite based on keypresses
     def update(self, pressed_keys):
         if pressed_keys[K_UP]:
@@ -38,6 +50,19 @@ class Player(pygame.sprite.Sprite):
             self.rect.move_ip(-1, 0)
         if pressed_keys[K_RIGHT]:
             self.rect.move_ip(1, 0)
+
+    def horizontal_block(self, pressed_keys):
+        if pressed_keys[K_UP]:
+            self.rect.move_ip(0, 1)
+        if pressed_keys[K_DOWN]:
+            self.rect.move_ip(0, -1)
+
+    def vertical_block(self, pressed_keys):
+        if pressed_keys[K_LEFT]:
+            self.rect.move_ip(1, 0)
+        if pressed_keys[K_RIGHT]:
+            self.rect.move_ip(-1, 0)
+
 
         # # Keep player on the screen
         # if self.rect.left < 0:

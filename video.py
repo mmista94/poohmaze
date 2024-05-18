@@ -97,7 +97,6 @@ class Cell:
                 size=size,
                 coordinates=(x, y)
             )
-            print(f'adding border {border}')
             self.borders[border] = b
             output_list.append(b)
         return output_list
