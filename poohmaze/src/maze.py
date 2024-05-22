@@ -2,6 +2,15 @@ import random
 from collections import deque
 
 
+def get_opposite_direction(direction) -> str:
+    mapper = {
+        't':'b',
+        'b':'t',
+        'r':'l',
+        'l':'r'
+    }
+    return mapper[direction]
+
 class Cell:
 
     def __init__(self) -> None:
@@ -27,16 +36,11 @@ class Cell:
 
     def get_borders(self):
         return [k for k, v in self.borders.items() if v]
+    
+    def get_paths(self):
+        return [k for k, v in self.borders.items() if not v]
 
-    @staticmethod
-    def opposite_direction(direction) -> str:
-        mapper = {
-            't':'b',
-            'b':'t',
-            'r':'l',
-            'l':'r'
-        }
-        return mapper[direction]
+    
     
 
 class StandardMaze:
@@ -92,7 +96,7 @@ class StandardMaze:
         direction = random.choice(good_neighbors)
         self.grid(*location).carve_passage(direction)
         adjacent_location = self.cell_offset(location, direction)
-        opposite_direction = Cell.opposite_direction(direction)
+        opposite_direction = get_opposite_direction(direction)
         self.grid(*adjacent_location).carve_passage(opposite_direction)
         self.grid(*adjacent_location).was_traversed = True
         return adjacent_location
@@ -118,8 +122,8 @@ class StandardMaze:
         return adjacent_cells
     
     
-def maze_factory(type, config):
-    if type=='standard':
+def maze_factory(config):
+    if config['type']=='standard':
         rows = config['rows']
         columns = config['columns']
         maze = StandardMaze(rows=rows, columns=columns)

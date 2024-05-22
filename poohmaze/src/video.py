@@ -1,7 +1,7 @@
 import pygame
 import random
 
-class Maze:
+class MazeInterface:
 
     def __init__(self) -> None:
         self._cells = []
@@ -16,17 +16,17 @@ class Maze:
             columns,
             rows
         ):
-        cell_width = round(maze_width / columns)
-        cell_height = round(maze_height / rows)
+        self.cell_width = round(maze_width / columns)
+        self.cell_height = round(maze_height / rows)
         for row in range(rows):
             r = []
             for col in range(columns):
-                x, y = col*cell_width, row*cell_height
+                x, y = col*self.cell_width, row*self.cell_height
                 cell = Cell(
                     x,
                     y,
-                    cell_width,
-                    cell_height
+                    self.cell_width,
+                    self.cell_height
                 )
                 r.append(cell)
             self._cells.append(r)
@@ -66,6 +66,8 @@ class Cell:
         self.colour = (255, 255, 255)
         self.border_colour = (0, 0, 0)
         self.surf = pygame.Surface(size=(width, height))
+        self.rect = self.surf.get_rect()
+        self.rect.topleft = x, y
         self.surf.fill(self.colour)
         # self.draw_border('t', 5)
         self.borders = {}
