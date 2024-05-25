@@ -1,5 +1,11 @@
+from __future__ import annotations
 import random
 from collections import deque
+
+import pygame
+from pygame.sprite import _Group
+
+from poohmaze.src.main import Display
 
 
 def get_opposite_direction(direction) -> str:
@@ -11,10 +17,34 @@ def get_opposite_direction(direction) -> str:
     }
     return mapper[direction]
 
+
+def draw_maze(maze: StandardMaze, display: Display):
+    size = display.screen.get_size()
+    width, height = size
+    cell_height = height / maze.rows
+    cell_width = width / maze.columns
+    cell_size = (cell_width, cell_height)
+    for i in range(maze.rows):
+        for j in range(maze.columns):
+            cell: Cell = maze.grid(i, j)
+            borders = cell.logic.get_borders()
+            cell.visual.draw_cell()
+
+
+
 class Cell:
 
     def __init__(self) -> None:
-        self.borders = {
+        self.logic: CellBackend = CellBackend()
+        self.visual: CellFrontend = CellFrontend()
+
+    def __str__(self):
+        return str(self.logic.get_borders())
+    
+class CellBackend:
+
+    def __init__(self) -> None:
+        self.borders: dict = {
             't':1,
             'b':1,
             'l':1,
@@ -22,16 +52,7 @@ class Cell:
         }
         self.was_traversed: bool = False
 
-    def __str__(self):
-        return str(self.get_borders())
-
     def carve_passage(self, direction) -> None:
-        # mapper = {
-        #     't':0,
-        #     'b':1,
-        #     'l':2,
-        #     'r':3
-        # }
         self.borders[direction] = 0
 
     def get_borders(self):
@@ -40,8 +61,63 @@ class Cell:
     def get_paths(self):
         return [k for k, v in self.borders.items() if not v]
 
+
+class CellFrontend():
     
-    
+    def __init__(self):
+        self.colour = (255, 255, 255)
+
+    def draw_cell(self, size, x, y):
+        self.size = size
+        self.x, self.y = x, y
+        self.surf = pygame.Surface(size=size)
+        self.surf.fill(self.colour)
+        self.rect = self.surf.get_rect() 
+        self.rect.topleft = (self.x, self.y)   
+
+    def draw_border(self, borders, border_width):
+        self.borders: dict[str, Border] = {}
+        for d in borders:
+            border_params = self._compute_border_geometry(d, border_width)
+            x, y = border_params['coordinates']
+            size = border_params['size']
+            self.borders[d] = Border(d, size, (x, y))
+
+    def _compute_border_geometry(self, border: str, border_width: float):
+        if border=='b':
+                x = self.x
+                y = self.y + self.size[1] - border_width
+                size = (self.size[0], border_width)
+        elif border=='t':
+            x = self.x
+            y = self.y
+            size = (self.size[0], border_width)
+        elif border=='l':
+            x = self.x
+            y = self.y
+            size = (border_width, self.size[1])
+        elif border=='r':
+            x = self.x + self.size[0] - border_width
+            y = self.y 
+            size = (border_width, self.size[1])
+        output = {
+            'coordinates':(x,y),
+            'size':size
+        }
+        return output
+
+
+class Border(pygame.sprite.Sprite):
+
+    def __init__(self, border, size, coordinates):
+        super().__init__()
+        self.size = size
+        self.direction = border
+        self.surf = pygame.Surface(size=size)
+        self.rect = self.surf.get_rect() 
+        self.rect.topleft = coordinates
+        self.mask = pygame.mask.from_surface(self.surf)
+
 
 class StandardMaze:
 
@@ -94,30 +170,30 @@ class StandardMaze:
 
     def _carve_passages(self, location, good_neighbors) -> tuple:
         direction = random.choice(good_neighbors)
-        self.grid(*location).carve_passage(direction)
+        self.grid(*location).logic.carve_passage(direction)
         adjacent_location = self.cell_offset(location, direction)
         opposite_direction = get_opposite_direction(direction)
-        self.grid(*adjacent_location).carve_passage(opposite_direction)
-        self.grid(*adjacent_location).was_traversed = True
+        self.grid(*adjacent_location).logic.carve_passage(opposite_direction)
+        self.grid(*adjacent_location).logic.was_traversed = True
         return adjacent_location
 
     def check_neighboring_cells(self, i, j, check_traversed=True):
         adjacent_cells = []
         if i > 0:
             n_cell = self.grid(i-1, j) 
-            if (not n_cell.was_traversed or not check_traversed):
+            if (not n_cell.logic.was_traversed or not check_traversed):
                 adjacent_cells.append('t')
         if i < self.rows-1:
             n_cell = self.grid(i+1, j)
-            if (not n_cell.was_traversed or not check_traversed):
+            if (not n_cell.logic.was_traversed or not check_traversed):
                 adjacent_cells.append('b')
         if j > 0:
             n_cell = self.grid(i, j-1)
-            if (not n_cell.was_traversed or not check_traversed):
+            if (not n_cell.logic.was_traversed or not check_traversed):
                 adjacent_cells.append('l')
         if j < self.columns-1:
             n_cell = self.grid(i, j+1)
-            if (not n_cell.was_traversed or not check_traversed):
+            if (not n_cell.logic.was_traversed or not check_traversed):
                 adjacent_cells.append('r')
         return adjacent_cells
     
