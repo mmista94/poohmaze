@@ -1,11 +1,12 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 import random
 from collections import deque
+import weakref
 
 import pygame
-from pygame.sprite import _Group
 
-from poohmaze.src.main import Display
+# from poohmaze.src.main import Display
 
 
 def get_opposite_direction(direction) -> str:
@@ -17,30 +18,6 @@ def get_opposite_direction(direction) -> str:
     }
     return mapper[direction]
 
-
-def draw_maze(maze: StandardMaze, display: Display):
-    size = display.screen.get_size()
-    width, height = size
-    cell_height = height / maze.rows
-    cell_width = width / maze.columns
-    cell_size = (cell_width, cell_height)
-    for i in range(maze.rows):
-        for j in range(maze.columns):
-            cell: Cell = maze.grid(i, j)
-            borders = cell.logic.get_borders()
-            cell.visual.draw_cell()
-
-
-
-class Cell:
-
-    def __init__(self) -> None:
-        self.logic: CellBackend = CellBackend()
-        self.visual: CellFrontend = CellFrontend()
-
-    def __str__(self):
-        return str(self.logic.get_borders())
-    
 class CellBackend:
 
     def __init__(self) -> None:
@@ -50,7 +27,7 @@ class CellBackend:
             'l':1,
             'r':1
         }
-        self.was_traversed: bool = False
+        self.borders_created: bool = False
 
     def carve_passage(self, direction) -> None:
         self.borders[direction] = 0
@@ -60,104 +37,244 @@ class CellBackend:
     
     def get_paths(self):
         return [k for k, v in self.borders.items() if not v]
-
+    
 
 class CellFrontend():
+
+    cell_width: float = 0
+    cell_height: float = 0
+
+    def __init__(self, parent) -> None:
+        self.cell: weakref.ReferenceType[Cell] = weakref.ref(parent)
+        self.borders: pygame.sprite.Group[Border] = pygame.sprite.Group()
+        self.init_borders()
+
+    @property
+    def size(self):
+        return self.cell().size
     
-    def __init__(self):
-        self.colour = (255, 255, 255)
+    @property
+    def coordinates(self):
+        return self.cell().coordinates
 
-    def draw_cell(self, size, x, y):
-        self.size = size
-        self.x, self.y = x, y
-        self.surf = pygame.Surface(size=size)
-        self.surf.fill(self.colour)
+    def update(self):
+        for border in self.borders: 
+            border.update()
+
+    def init_borders(self):
+        for d in self.cell().logic.get_borders():
+            self.borders.add(Border(d, self.cell()))
+
+    def blit(self, display: Display):
+        for border in self.borders.values():
+            display.screen.blit(border.surf,  border.rect)
+
+
+@dataclass
+class Cell:
+
+    row: int
+    column: int
+    logic: CellBackend = field(init=False, default_factory=CellBackend)
+    visual: CellFrontend = field(init=False)
+
+    def __post_init__(self):
+        self.visual = CellFrontend(self)
+
+    def update_video(self):
+        self.visual.update()
+
+    @property
+    def size(self):
+        return CellFrontend.cell_width, CellFrontend.cell_height
+    
+    @property
+    def coordinates(self):
+        x = self.column * CellFrontend.cell_width
+        y = self.row * CellFrontend.cell_height
+        return x, y
+
+
+class Border(pygame.sprite.Sprite): 
+
+    border_factor = 0.05
+
+    def __init__(self, direction: str, parent: Cell):
+        super().__init__()
+        self._cell: weakref.ReferenceType[Cell] = weakref.ref(parent)
+        self.which_border = direction
+        _geometry = self.compute_geometry()
+        self.surf = pygame.Surface(size=_geometry['size'])
+        self.surf.fill((0, 0, 0))
         self.rect = self.surf.get_rect() 
-        self.rect.topleft = (self.x, self.y)   
+        self.rect.topleft = _geometry['coordinates']
+        self.mask = pygame.mask.from_surface(self.surf)
 
-    def draw_border(self, borders, border_width):
-        self.borders: dict[str, Border] = {}
-        for d in borders:
-            border_params = self._compute_border_geometry(d, border_width)
-            x, y = border_params['coordinates']
-            size = border_params['size']
-            self.borders[d] = Border(d, size, (x, y))
+    @property
+    def cell_coordinates(self):
+        return self._cell().coordinates
+    
+    @property
+    def cell_size(self):
+        return self._cell().size
 
-    def _compute_border_geometry(self, border: str, border_width: float):
-        if border=='b':
-                x = self.x
-                y = self.y + self.size[1] - border_width
-                size = (self.size[0], border_width)
-        elif border=='t':
-            x = self.x
-            y = self.y
-            size = (self.size[0], border_width)
-        elif border=='l':
-            x = self.x
-            y = self.y
-            size = (border_width, self.size[1])
-        elif border=='r':
-            x = self.x + self.size[0] - border_width
-            y = self.y 
-            size = (border_width, self.size[1])
+    def update(self):
+        if self.which_border in self._cell().logic.get_borders():
+            geometry = self.compute_geometry()
+            self.size = geometry['size']
+            self.surf = pygame.Surface(size=self.size)
+            self.rect = self.surf.get_rect() 
+            self.rect.topleft = geometry['coordinates']
+        else:
+            self.kill()
+
+    def compute_geometry(self):
+        border_width = self.border_factor * self.cell_size[0]
+        if self.which_border=='b':
+            x = self.cell_coordinates[0]
+            y = self.cell_coordinates[1] + self.cell_size[1] - border_width
+            size = (self.cell_size[0], border_width)
+        elif self.which_border=='t':
+            x = self.cell_coordinates[0]
+            y = self.cell_coordinates[1]
+            size = (self.cell_size[0], border_width)
+        elif self.which_border=='l':
+            x = self.cell_coordinates[0]
+            y = self.cell_coordinates[1]
+            size = (border_width, self.cell_size[1])
+        elif self.which_border=='r':
+            x = self.cell_coordinates[0] + self.cell_size[0] - border_width
+            y = self.cell_coordinates[1]
+            size = (border_width, self.cell_size[1])
         output = {
             'coordinates':(x,y),
             'size':size
         }
         return output
+    
 
+# Define the strategy interface
+class MazeGenerationStrategy:
+    def generate(self):
+        raise NotImplementedError("This method should be overridden by subclasses")
+    
 
-class Border(pygame.sprite.Sprite):
+class StandardMaze(MazeGenerationStrategy):
 
-    def __init__(self, border, size, coordinates):
-        super().__init__()
-        self.size = size
-        self.direction = border
-        self.surf = pygame.Surface(size=size)
-        self.rect = self.surf.get_rect() 
-        self.rect.topleft = coordinates
-        self.mask = pygame.mask.from_surface(self.surf)
+    @classmethod
+    def generate(cls, maze: Maze):
+        location = maze.random_location()
+        cell = maze.grid(*location)
+        k = 0
+        moves = deque()
+        moves.append(cell)
+        cell.logic.borders_created = True
+        while k < (maze.rows * maze.columns - 1):
+            # Check if neighboring cells are suitable
+            if good_neighbors:=cls.check_neighboring_cells(maze, cell):
+                cell = cls._carve_passages(maze, cell, good_neighbors)
+                moves.append(cell)
+                k += 1
+            else:
+                moves.pop()
+                cell = moves[-1]
+        cls.add_random_passages(maze, int(0.1*maze.rows*maze.columns))
 
+    @classmethod
+    def add_random_passages(cls, maze: Maze, number_of_passages):
+        for _ in range(number_of_passages):
+            location = maze.random_location()
+            cell = maze.grid(*location)
+            good_neighbors = cls.check_neighboring_cells(maze, cell, False)
+            cls._carve_passages(maze, cell, good_neighbors)
 
-class StandardMaze:
+    @staticmethod
+    def _carve_passages(
+            maze: Maze, 
+            cell: Cell,
+            good_neighbors: list[str]
+        ) -> Cell:
+        # direction should be: 't', 'b', 'l', 'r'
+        direction = random.choice(good_neighbors)
+        cell.logic.carve_passage(direction)
+        # maze.grid(*location).logic.carve_passage(direction)
+        adjacent_cell = maze.adjacent_cell(cell, direction)
+        opposite_direction = get_opposite_direction(direction)
+        adjacent_cell.logic.carve_passage(opposite_direction)
+        adjacent_cell.logic.borders_created = True
+        return adjacent_cell
 
-    def __init__(self, rows: int, columns: int) -> None:
+    @staticmethod
+    def check_neighboring_cells(
+        maze: Maze, 
+        cell: Cell, 
+        check_traversed=True
+    ) -> list[str]:
+        adjacent_cells = []
+        if cell.row > 0:
+            n_cell = maze.adjacent_cell(cell, 't')
+            if (not n_cell.logic.borders_created or not check_traversed):
+                adjacent_cells.append('t')
+        if cell.row < maze.rows-1:
+            n_cell = maze.adjacent_cell(cell, 'b')
+            if (not n_cell.logic.borders_created or not check_traversed):
+                adjacent_cells.append('b')
+        if cell.column > 0:
+            n_cell = maze.adjacent_cell(cell, 'l')
+            if (not n_cell.logic.borders_created or not check_traversed):
+                adjacent_cells.append('l')
+        if cell.column < maze.columns-1:
+            n_cell = maze.adjacent_cell(cell, 'r')
+            if (not n_cell.logic.borders_created or not check_traversed):
+                adjacent_cells.append('r')
+        return adjacent_cells
+    
+
+class Maze:
+
+    def __init__(self, rows: int, columns: int, strategy: str) -> None:
         self.rows = rows
         self.columns = columns
-        self._grid = [[Cell() for _ in range(columns)] for _ in range(rows)]
-        self.generate_maze()
-        # self.add_random_passages(int(0.05*self.rows*self.columns))
+        self._grid = [[Cell(j, i) for i in range(columns)] for j in range(rows)]
+        self.borders = pygame.sprite.Group()
+        self.set_generation_strategy(strategy)
+        self.generate()
 
+    def set_generation_strategy(self, strategy: str=None):
+        if not strategy or strategy=='standard':
+            self.generation_strategy = StandardMaze()
+
+    def update_video(self, display: Display):
+        self.update_cell_dimensions(display)
+        for row in self._grid:
+            for cell in row:
+                cell.update_video()
+
+    def update_cell_dimensions(self, display: Display):
+        cell_width = display.screen.get_size()[0] / self.columns
+        cell_height = display.screen.get_size()[1] / self.rows
+        CellFrontend.cell_height = cell_height
+        CellFrontend.cell_width = cell_width
+
+    def generate(self):
+        if self.generation_strategy:
+            self.generation_strategy.generate(self)
+        else:
+            raise ValueError("Generation strategy not set")   
+    
+    def reset(self):
+        self._grid = [
+            [Cell(j, i) for i in range(self.columns)] for j in range(self.rows)
+        ]
+        self.borders = pygame.sprite.Group()
+    
     def grid(self, row, column) -> Cell:
         return self._grid[row][column]
 
     def random_location(self):
         return random.randint(0, self.rows-1), random.randint(0, self.columns-1)
 
-    def generate_maze(self):
-        location = self.random_location()
-        k = 0
-        moves = deque()
-        moves.append(location)
-        # self.grid(*location).was_traversed = True
-        while k < self.rows*self.columns:
-            # Check if neighboring cells are suitable
-            if good_neighbors:=self.check_neighboring_cells(*location):
-                location = self._carve_passages(location, good_neighbors)
-                moves.append(location)
-                k += 1
-            else:
-                moves.pop()
-                location = moves[-1]
-
-    def add_random_passages(self, number_of_passages):
-        for _ in range(number_of_passages):
-            location = self.random_location()
-            good_neighbors = self.check_neighboring_cells(*location, False)
-            location = self._carve_passages(location, good_neighbors)
-
-
-    def cell_offset(self, location, direction):
+    def adjacent_cell(self, cell: Cell, direction: str) -> Cell:
         if direction=="t":
             offset = -1, 0
         elif direction=='l':
@@ -166,41 +283,26 @@ class StandardMaze:
             offset = 0, 1
         elif direction=='b':
             offset = 1, 0
-        return location[0] + offset[0], location[1] + offset[1]
+        adjacent_cell = self.grid(
+            cell.row + offset[0],
+            cell.column + offset[1]
+        )
+        return adjacent_cell        
 
-    def _carve_passages(self, location, good_neighbors) -> tuple:
-        direction = random.choice(good_neighbors)
-        self.grid(*location).logic.carve_passage(direction)
-        adjacent_location = self.cell_offset(location, direction)
-        opposite_direction = get_opposite_direction(direction)
-        self.grid(*adjacent_location).logic.carve_passage(opposite_direction)
-        self.grid(*adjacent_location).logic.was_traversed = True
-        return adjacent_location
+    def collect_borders(self):
+        for row in self._grid:
+            for cell in row:
+                self.borders.add(cell.visual.borders.sprites())
 
-    def check_neighboring_cells(self, i, j, check_traversed=True):
-        adjacent_cells = []
-        if i > 0:
-            n_cell = self.grid(i-1, j) 
-            if (not n_cell.logic.was_traversed or not check_traversed):
-                adjacent_cells.append('t')
-        if i < self.rows-1:
-            n_cell = self.grid(i+1, j)
-            if (not n_cell.logic.was_traversed or not check_traversed):
-                adjacent_cells.append('b')
-        if j > 0:
-            n_cell = self.grid(i, j-1)
-            if (not n_cell.logic.was_traversed or not check_traversed):
-                adjacent_cells.append('l')
-        if j < self.columns-1:
-            n_cell = self.grid(i, j+1)
-            if (not n_cell.logic.was_traversed or not check_traversed):
-                adjacent_cells.append('r')
-        return adjacent_cells
+    def blit(self, display: Display):
+        for entity in self.borders:
+            display.screen.blit(entity.surf, entity.rect)
     
-    
+
 def maze_factory(config):
+    rows = config.getint('rows')
+    columns = config.getint('columns')
     if config['type']=='standard':
-        rows = config['rows']
-        columns = config['columns']
-        maze = StandardMaze(rows=rows, columns=columns)
-        return maze
+        strategy = config['type']
+    maze = Maze(rows, columns, strategy)
+    return maze

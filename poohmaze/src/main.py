@@ -2,188 +2,83 @@ from __future__ import annotations
 
 from configparser import ConfigParser
 from dataclasses import dataclass
+import enum
 import os
-import random
 import pygame
-from maze import StandardMaze, maze_factory, get_opposite_direction
-import video
+# from maze import Maze
+# from loops import GameLoop
 from characters import Characters
+from maze import maze_factory, Maze
+# from maze import Maze, maze_factory
 
-def start_game(fullscreen=False):
-    App.start(fullscreen)
+def start_game():
+    game = PoohMaze.start()
 
+class GameState(enum.Enum):
+    """
+    Enum for the Game's State Machine. Every state represents a
+    known game state for the game engine.
+    """
+
+    # Unknown state, indicating possible error or misconfiguration.
+    unknown = "unknown"
+    starting = "starting"
+    initializing_maze = "initializing_maze"
+    display_initialized = "display_initialized"
+    initialized = "initialized"
+    game_playing = "game_playing"
+    game_ended = "game_ended"
+    quitting = "quitting"
+    
+
+class StateError(Exception):
+    """
+    Raised if the game is in an unexpected game state at a point
+    where we expect it to be in a different state. For instance, to
+    start the game loop we must be initialized.
+    """
 
 @dataclass
-class App:
+class Loop:
+    poohmaze: PoohMaze
 
-    display: Display
-    game: Game
-    config: ConfigParser
-
-    @classmethod
-    def start(cls, fullscreen):  
-        pygame.init()
-        game = cls(
-            display=None,
-            game=None,
-            config=None
-        )
-        game.init_config()
-        game.init_display(fullscreen)
-        game.init_game_backend()
-        return game
-
-    def init_config(self):
-        self.config = ConfigParser()
-        cd = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.abspath(os.path.join(cd, '../settings.ini'))
-        self.config.read(path)
-
-    def init_display(self, fullscreen=False):
-        window_config = self.config['display_window']
-        width = int(window_config['screen_width'])
-        height = int(window_config['screen_height'])
-        rect = pygame.Rect(0, 0, width, height)
-        self.display = Display.create(rect, fullscreen)
-        window_style = pygame.FULLSCREEN if self.display.fullscreen else 0
-        self.display.screen = pygame.display.set_mode(rect.size, window_style)
-
-    def init_game_backend(self, maze_config=None):
-        # Game.create(maze_config, characters_config, self.screen)
-        running = True
-        while running:
-            # Did the user click the window close button?
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+    def handle_events(self):
+        """
+        Sample event handler that ensures quit events and normal
+        event loop processing takes place. Without this, the game will
+        hang, and repaints by the operating system will not happen,
+        causing the game window to hang.
+        """
+        for event in pygame.event.get():
+            if (
+                event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+            ) or event.type == pygame.QUIT:
+                self.set_state(GameState.quitting)
+            # Delegate the event to a sub-event handler `handle_event`
+        pressed_keys = pygame.key.get_pressed()
+        self.handle_event(pressed_keys)
 
     def loop(self):
-        return
-
-#     def run(self):
-#         maze_cells = self.maze.graphics.draw_maze_input()
-#         c = self.maze.graphics.cells(0, 0)
-#         # self.screen.blits(maze_cells)
-#         player = characters.Player()
-#         badman = characters.Badman((2,2))
-#         self.all_sprites.add(player)
-#         self.enemies_sprites.add(badman)
-#         self.all_sprites.add(badman)
-#         playersize =(
-#             0.65*SCREEN_LENGTH/maze_config['rows'],
-#             0.65*SCREEN_WIDTH/maze_config['columns']
-#         )
-#         badmansize = (
-#             SCREEN_LENGTH/maze_config['rows'],
-#             SCREEN_WIDTH/maze_config['columns']
-#         )
-#         # badman.movement_coordinates = (2, 3)
-#         player.scale(playersize)
-#         badman.scale(badmansize)
-#         w = c.width/2    
-#         h = c.height/2
-#         player.rect.center = (w, h)
-#         badman.rect.center = (5*w, 5*h)
-#         for border in self.maze.sprites_borders:
-#             self.borders_sprites.add(border)
-#             self.all_sprites.add(border)
-#         for entity in self.borders_sprites:
-#             self.screen.blit(entity.surf, entity.rect)
-#         # self.screen.blit(player.surf, (30,30))
-#         running = True
-#         while running:
-#             # Did the user click the window close button?
-#             for event in pygame.event.get():
-#                 if event.type == pygame.QUIT:
-#                     running = False
-#             # Get the set of keys pressed and check for user input
-#             pressed_keys = pygame.key.get_pressed()
-#             player.horizontal_move(pressed_keys)
-#             self.move_badmans(badman)
-#             self.screen.blits(maze_cells)
-#             for entity in self.all_sprites:
-#                 self.screen.blit(entity.surf, entity.rect)
-#             # maze_cells = self.maze.graphics.draw_maze_input()
-#             # self.screen.blits(maze_cells)
-#             collisions_horizontal = pygame.sprite.spritecollide(
-#                 player, 
-#                 self.borders_sprites, 
-#                 False, 
-#                 pygame.sprite.collide_mask
-#             )
-#             # if pygame.sprite.spritecollide(
-#             #     player, 
-#             #     self.enemies_sprites, 
-#             #     False, 
-#             #     pygame.sprite.collide_mask
-#             # ):
-#             #     badman.kill()
-#             if collisions_horizontal:
-#                 # If so, remove the player
-#                 player.horizontal_block(pressed_keys)
+        while self.state != GameState.quitting:
+            self.handle_events()
             
-#             player.vertical_move(pressed_keys)
-#             for entity in self.all_sprites:
-#                 self.screen.blit(entity.surf, entity.rect)
-#             collisions_vertical = pygame.sprite.spritecollide(
-#                 player, 
-#                 self.borders_sprites, 
-#                 False, 
-#                 pygame.sprite.collide_mask
-#             )
-#             if collisions_vertical:
-#                 # If so, remove the player
-#                 player.vertical_block(pressed_keys)
-#             # pygame.display.update()
-#             pygame.display.flip()
 
-#     def move_badmans(self, badman):
-#         if not badman.is_moving:
-#             i_b, j_b = badman.maze_coordinates
-#             current_cell = self.maze.maze.grid(i_b, j_b)
-#             paths = current_cell.get_paths()
-#             if not badman.opposite_direction:
-#                 path = random.choice(paths)
-#             else:  
-#                 if random.random() < 0.9 and len(paths) > 1:
-#                     paths.remove(badman.opposite_direction)
-#                 path = random.choice(paths)
-#             badman.opposite_direction = get_opposite_direction(path)
-#             badman.direction = path
-#             badman.maze_coordinates = self.maze.maze.cell_offset(badman.maze_coordinates, path)
-#             i_b, j_b = badman.maze_coordinates
-#             badman.target = self.maze.graphics.cells(i_b, j_b).rect.center
-#             badman.is_moving = True
-#         else:
-#             x, y = badman.rect.center
-#             # print(f'Wartość x_dist: {x - badman.target[0]}')
-#             # print(f'Wartość y_dist: {y - badman.target[1]}')
-#             if (abs(x - badman.target[0]) < 1 and abs(y - badman.target[1])<1):
-#                 i_b, j_b = badman.maze_coordinates
-#                 cell = self.maze.graphics.cells(i_b, j_b)
-#                 badman.rect.center = cell.rect.center
-#                 badman.is_moving = False
-#             else:
-#                 badman.move()
-        
-# class MazeBackend:
+    def handle_event(self, event):
+        """
+        Handles a singular event, `event`.
+        """
 
-#     def __init__(self, maze_config, maze_type='standard') -> None:
-#         self.maze = maze_factory(maze_type, maze_config)
-#         self.graphics = video.Maze()
-#         self.sprites_borders = []
-#         self.graphics.init_cells(
-#             SCREEN_WIDTH,
-#             SCREEN_LENGTH,
-#             self.maze.columns,
-#             self.maze.rows
-#         )
-#         for i in range(self.maze.rows):
-#             for j in range(self.maze.columns):
-#                 borders = self.maze.grid(i, j).get_borders()
-#                 l = self.graphics.cells(i, j).prepare_borders(borders, 7.5)
-#                 for sprite in l:
-#                     self.sprites_borders.append(sprite)
+    # Convenient shortcuts.
+    def set_state(self, new_state):
+        self.poohmaze.set_state(new_state)
+
+    @property
+    def screen(self):
+        return self.poohmaze.display
+
+    @property
+    def state(self):
+        return self.poohmaze.state
 
 
 @dataclass
@@ -205,23 +100,122 @@ class Display:
 @dataclass
 class Game:
 
-    maze: StandardMaze
+    maze: Maze
     characters: Characters
+    loop: GameLoop
     # all_sprites = pygame.sprite.Group()
     # all_sprites = pygame.sprite.Group()
     # borders_sprites = pygame.sprite.Group()
     # enemies_sprites = pygame.sprite.Group()
 
     @classmethod
-    def create(cls, maze_config, display):
+    def create(cls, maze_config, display, engine):
+        # maze = Maze.create(maze_config, display)
         maze = maze_factory(maze_config)
         characters = Characters.generate_characters()
         game = cls(
             maze=maze,
-            characters=characters
+            characters=characters,
+            loop = GameLoop(engine)
         )
+        game.maze.update_video(display)
+        return game
+    
+@dataclass
+class PoohMaze:
+
+    display: Display
+    game: Game
+    config: ConfigParser
+    state: GameState
+
+    @classmethod
+    def start(cls):  
+        pygame.init()
+        game = cls(
+            display=None,
+            game=None,
+            config=None,
+            state=GameState.starting
+        )
+        game.init_config()
+        game.init_display()
+        game.init_game_backend(game.config['maze_config'])
+        game.loop()
         return game
 
+    def init_config(self):
+        self.assert_state_is(GameState.starting)
+        self.config = ConfigParser()
+        cd = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.abspath(os.path.join(cd, '../settings.ini'))
+        self.config.read(path)
+
+    def init_display(self):  
+        self.assert_state_is(GameState.starting)
+        window_config = self.config['display_window']
+        #######################################
+        width = int(window_config['screen_width'])
+        height = int(window_config['screen_height'])
+        start_fullscreen = window_config.getboolean('start_fullscreen')
+        #######################################
+        rect = pygame.Rect(0, 0, width, height)
+        self.display = Display.create(rect, start_fullscreen)
+        window_style = pygame.FULLSCREEN if self.display.fullscreen else 0
+        self.display.screen = pygame.display.set_mode(rect.size, window_style)
+        self.display.screen.fill((255, 255, 255))
+        self.set_state(GameState.display_initialized)
+
+    def init_game_backend(self, maze_config=None):
+        self.assert_state_is(GameState.display_initialized)
+        self.game = Game.create(maze_config, self.display, self)
+        # self.set_state(GameState.initialized)
+        self.set_state(GameState.game_playing)
+    
+    def set_state(self, new_state):
+        self.state = new_state
+
+    def assert_state_is(self, *expected_states: GameState):
+        """
+        Asserts that the game engine is one of
+        `expected_states`. If that assertions fails, raise
+        `StateError`.
+        """
+        if not self.state in expected_states:
+            raise StateError(
+                f"Expected the game state to be one of {expected_states} not {self.state}"
+            )
+
+    def loop(self, ):
+        while self.state != GameState.quitting:
+            if self.state == GameState.game_playing:
+                self.game.loop.loop()
+        #self.quit()
+
+
+class GameLoop(Loop):
+    
+    def handle_event(self, pressed_keys):
+        self.move_player(pressed_keys)
+        display = self.poohmaze.display
+        display.screen.blit(display.screen, display.screen_rect)
+        self.poohmaze.game.maze.borders = pygame.sprite.Group()
+        self.poohmaze.game.maze.collect_borders()
+        self.poohmaze.game.maze.update_cell_dimensions(display)
+        self.poohmaze.game.maze.blit(display)
+        pygame.display.flip()
+        # self.move_npcs()
+
+    def move_player(self, pressed_keys):
+        player = self.poohmaze.game.characters.player
+        def collision_detector(x):
+            return pygame.sprite.spritecollide(
+                    x, 
+                    self.poohmaze.game.maze.borders, 
+                    False, 
+                    pygame.sprite.collide_mask
+            )
+        player.move(pressed_keys, collision_detector)
 
 if __name__=='__main__':
-    start_game(True)
+    start_game()

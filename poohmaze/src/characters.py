@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from math import sqrt
 from typing import List
 import pygame
 
@@ -24,10 +25,10 @@ class Characters:
     enemies: pygame.sprite.Group
 
     @classmethod
-    def generate_characters(cls, enemies_input):
-        player = Player()
+    def generate_characters(cls, enemies_input=None):
+        player = Player(r'poohmaze\assets\coala_tigger_bigger.png')
         enemies: Enemies = Enemies()
-        enemies.add_enemies(enemies_input)
+        # enemies.add_enemies(enemies_input)
         chars = cls(
             player, enemies
         )
@@ -75,6 +76,22 @@ class Player(MazeRunner):
             self.rect.move_ip(-velocity, 0)
         if pressed_keys[K_RIGHT]:
             self.rect.move_ip(velocity, 0)
+
+    def move(self, pressed_keys, collision_detector):
+        velocity = self.compute_velocity(pressed_keys)
+        self.vertical_move(pressed_keys, velocity[0])
+        if collision_detector(self):
+            self.vertical_block(pressed_keys, velocity[0])
+        self.horizontal_move(pressed_keys, velocity[1])
+        if collision_detector(self):
+            self.vertical_block(pressed_keys, velocity[1])
+
+    def compute_velocity(self, pressed_keys, absolute_v=1):
+        is_vertical = (pressed_keys[K_UP] or pressed_keys[K_DOWN])
+        is_horizontal = (pressed_keys[K_LEFT] or pressed_keys[K_RIGHT])
+        d = (sqrt(2)*absolute_v)
+        velocity = is_horizontal/d, is_vertical/d
+        return velocity
 
     def horizontal_block(self, pressed_keys, velocity=1):
         if pressed_keys[K_UP]:

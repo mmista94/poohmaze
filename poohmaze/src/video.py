@@ -1,5 +1,4 @@
 import pygame
-import random
 
 class MazeInterface:
 
@@ -35,8 +34,6 @@ class MazeInterface:
         cells = []
         for row in self._cells:
             for cell in row:
-                # (r, g, b) = [random.randint(0, 255) for i in range(3)]
-                # cell.surf.fill((r,g,b))
                 cells.append((cell.surf, (cell.x, cell.y)))
         return cells
     
@@ -63,13 +60,12 @@ class Cell:
         self.y = y
         self.width = width
         self.height = height
-        self.colour = (255, 255, 255)
+        # self.colour = (255, 255, 255)
         self.border_colour = (0, 0, 0)
-        self.surf = pygame.Surface(size=(width, height))
+        # self.surf = pygame.Surface(size=(width, height))
         self.rect = self.surf.get_rect()
         self.rect.topleft = x, y
         self.surf.fill(self.colour)
-        # self.draw_border('t', 5)
         self.borders = {}
 
     def get_coordinates(self):
