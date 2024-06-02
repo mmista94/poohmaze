@@ -38,6 +38,66 @@ class CellBackend:
     def get_paths(self):
         return [k for k, v in self.borders.items() if not v]
     
+    
+class Border(pygame.sprite.Sprite): 
+
+    border_factor = 0.05
+
+    def __init__(self, direction: str, parent: Cell):
+        super().__init__()
+        self._cell: weakref.ReferenceType[Cell] = weakref.ref(parent)
+        self.which_border = direction
+        self.surf = pygame.Surface(size=self.size)
+        self.surf.fill((0, 0, 0))
+        self.rect = self.surf.get_rect() 
+        self.rect.topleft = self.coordinates
+        self.mask = pygame.mask.from_surface(self.surf)
+    
+    @property
+    def coordinates(self):
+        border_width = self.border_factor * self._cell().size[0]
+        if self.which_border=='b':
+            x = self._cell().coordinates[0]
+            y = (self._cell().coordinates[1] 
+                 + self._cell().size[1] - border_width)
+        elif self.which_border=='t':
+            x = self._cell().coordinates[0]
+            y = self._cell().coordinates[1]
+        elif self.which_border=='l':
+            x = self._cell().coordinates[0]
+            y = self._cell().coordinates[1]
+        elif self.which_border=='r':
+            x = (self._cell().coordinates[0] + 
+                 self._cell().size[0] - border_width)
+            y = self._cell().coordinates[1]
+        return x, y
+    
+    @property
+    def size(self):
+        border_width = self.border_factor * self._cell().size[0]
+        if self.which_border=='b':
+            size = (self._cell().size[0], border_width)
+        elif self.which_border=='t':
+            size = (self._cell().size[0], border_width)
+        elif self.which_border=='l':
+            size = (border_width, self._cell().size[1])
+        elif self.which_border=='r':
+            size = (border_width, self._cell().size[1])
+        return size
+    
+    def kill(self):
+        super().kill()
+        self._cell().logic.borders[self.which_border] = 0
+
+    def _update(self):
+        if self.which_border in self._cell().logic.get_borders():
+            self.surf = pygame.Surface(size=self.size)
+            self.rect = self.surf.get_rect() 
+            self.rect.topleft = self.coordinates
+            self.mask = pygame.mask.from_surface(self.surf)
+        else:
+            self.kill()
+    
 
 class CellFrontend():
 
@@ -51,7 +111,7 @@ class CellFrontend():
 
     @property
     def size(self):
-        return self.cell().size
+        return self.cell_width, self.cell_height
     
     @property
     def coordinates(self):
@@ -59,15 +119,11 @@ class CellFrontend():
 
     def update(self):
         for border in self.borders: 
-            border.update()
+            border._update()
 
     def init_borders(self):
         for d in self.cell().logic.get_borders():
             self.borders.add(Border(d, self.cell()))
-
-    def blit(self, display: Display):
-        for border in self.borders.values():
-            display.screen.blit(border.surf,  border.rect)
 
 
 @dataclass
@@ -93,61 +149,6 @@ class Cell:
         x = self.column * CellFrontend.cell_width
         y = self.row * CellFrontend.cell_height
         return x, y
-
-
-class Border(pygame.sprite.Sprite): 
-
-    border_factor = 0.05
-
-    def __init__(self, direction: str, parent: Cell):
-        super().__init__()
-        self._cell: weakref.ReferenceType[Cell] = weakref.ref(parent)
-        self.which_border = direction
-        self.surf = pygame.Surface(size=self.size)
-        self.surf.fill((0, 0, 0))
-        self.rect = self.surf.get_rect() 
-        self.rect.topleft = self.coordinates
-        self.mask = pygame.mask.from_surface(self.surf)
-    
-    @property
-    def coordinates(self):
-        border_width = self.border_factor * self.cell_size[0]
-        if self.which_border=='b':
-            x = self._cell().coordinates[0]
-            y = (self._cell().coordinates[1] 
-                 + self._cell().size[1] - border_width)
-        elif self.which_border=='t':
-            x = self._cell().coordinates[0]
-            y = self._cell().coordinates[1]
-        elif self.which_border=='l':
-            x = self._cell().coordinates[0]
-            y = self._cell().coordinates[1]
-        elif self.which_border=='r':
-            x = (self._cell().coordinates[0] + 
-                 self._cell().size[0] - border_width)
-            y = self._cell().coordinates[1]
-        return x, y
-    
-    @property
-    def size(self):
-        border_width = self.border_factor * self.cell_size[0]
-        if self.which_border=='b':
-            size = (self._cell().size[0], border_width)
-        elif self.which_border=='t':
-            size = (self._cell().size[0], border_width)
-        elif self.which_border=='l':
-            size = (border_width, self._cell().size[1])
-        elif self.which_border=='r':
-            size = (border_width, self._cell().size[1])
-        return size
-
-    def update(self):
-        if self.which_border in self._cell().logic.get_borders():
-            self.surf = pygame.Surface(size=self.size)
-            self.rect = self.surf.get_rect() 
-            self.rect.topleft = self.coordinates
-        else:
-            self.kill()
     
 
 # Define the strategy interface
@@ -236,27 +237,36 @@ class Maze:
         self.borders = pygame.sprite.Group()
         self.set_generation_strategy(strategy)
 
-    def set_generation_strategy(self, strategy: str=None):
-        if not strategy or strategy=='standard':
-            self.generation_strategy = StandardMaze()
+    # ####### Video: ####################################
 
-    def update_video(self, display: Display):
-        self.update_cell_dimensions(display)
+    def update_video(self, size: tuple[float, float]):
+        self._update_cell_dimensions(size)
         for row in self._grid:
             for cell in row:
                 cell.update_video()
 
-    def update_cell_dimensions(self, display: Display):
-        cell_width = display.screen.get_size()[0] / self.columns
-        cell_height = display.screen.get_size()[1] / self.rows
+    def _update_cell_dimensions(self, size: tuple[float, float]):
+        cell_width = size[0] / self.columns
+        cell_height = size[1] / self.rows
         CellFrontend.cell_height = cell_height
         CellFrontend.cell_width = cell_width
+
+    @property
+    def cell_dimensions(self):
+        return CellFrontend.cell_width, CellFrontend.cell_height
+
+    # ####### Logic: ####################################
+
+    def set_generation_strategy(self, strategy: str=None):
+        if not strategy or strategy=='standard':
+            self.generation_strategy = StandardMaze()
 
     def generate(self):
         if self.generation_strategy:
             self.generation_strategy.generate(self)
         else:
             raise ValueError("Generation strategy not set")   
+        self.collect_borders()
     
     def reset(self):
         self._grid = [
@@ -289,10 +299,6 @@ class Maze:
         for row in self._grid:
             for cell in row:
                 self.borders.add(cell.visual.borders.sprites())
-
-    def blit(self, display: Display):
-        for entity in self.borders:
-            display.screen.blit(entity.surf, entity.rect)
     
 
 def maze_factory(config):

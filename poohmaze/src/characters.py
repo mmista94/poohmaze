@@ -1,21 +1,16 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import sqrt
-from typing import List
 import pygame
 
 # Import pygame.locals for easier access to key coordinates
 # Updated to conform to flake8 and black standards
 # from pygame.locals import *
 from pygame.locals import (
-    RLEACCEL,
     K_UP,
     K_DOWN,
     K_LEFT,
-    K_RIGHT,
-    K_ESCAPE,
-    KEYDOWN,
-    QUIT,
+    K_RIGHT
 )
 
 @dataclass
@@ -23,6 +18,7 @@ class Characters:
 
     player: Player
     enemies: pygame.sprite.Group
+    all_chars: pygame.sprite.Group[MazeRunner] = field(init=False, default_factory=pygame.sprite.Group)
 
     @classmethod
     def generate_characters(cls, enemies_input=None):
@@ -32,7 +28,9 @@ class Characters:
         chars = cls(
             player, enemies
         )
-        return chars        
+        chars.all_chars.add(chars.player)
+        chars.all_chars.add(chars.enemies.sprites())
+        return chars
 
 
 class Enemies(pygame.sprite.Group):
@@ -55,7 +53,8 @@ class MazeRunner(pygame.sprite.Sprite):
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
 
-    def scale(self, size):
+    def scale(self, cell_size, scaling_factor = 0.8):
+        size = scaling_factor * cell_size[0], scaling_factor * cell_size[1]
         self.surf = pygame.transform.scale(self.surf, size)
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
@@ -64,14 +63,14 @@ class MazeRunner(pygame.sprite.Sprite):
 class Player(MazeRunner):
 
     # Move the sprite based on keypresses
-    def horizontal_move(self, pressed_keys, velocity=1):
+    def vertical_move(self, pressed_keys, velocity=1):
         if pressed_keys[K_UP]:
             self.rect.move_ip(0, -velocity)
         if pressed_keys[K_DOWN]:
             self.rect.move_ip(0, velocity)
 
     # Move the sprite based on keypresses
-    def vertical_move(self, pressed_keys, velocity=1):
+    def horizontal_move(self, pressed_keys, velocity=1):
         if pressed_keys[K_LEFT]:
             self.rect.move_ip(-velocity, 0)
         if pressed_keys[K_RIGHT]:
@@ -79,27 +78,27 @@ class Player(MazeRunner):
 
     def move(self, pressed_keys, collision_detector):
         velocity = self.compute_velocity(pressed_keys)
-        self.vertical_move(pressed_keys, velocity[0])
+        self.horizontal_move(pressed_keys, velocity[0])
         if collision_detector(self):
-            self.vertical_block(pressed_keys, velocity[0])
-        self.horizontal_move(pressed_keys, velocity[1])
+            self.horizontal_block(pressed_keys, velocity[0])
+        self.vertical_move(pressed_keys, velocity[1])
         if collision_detector(self):
             self.vertical_block(pressed_keys, velocity[1])
 
-    def compute_velocity(self, pressed_keys, absolute_v=1):
+    def compute_velocity(self, pressed_keys, absolute_v=2):
         is_vertical = (pressed_keys[K_UP] or pressed_keys[K_DOWN])
         is_horizontal = (pressed_keys[K_LEFT] or pressed_keys[K_RIGHT])
-        d = (sqrt(2)*absolute_v)
+        d = (sqrt(2)/absolute_v)
         velocity = is_horizontal/d, is_vertical/d
         return velocity
 
-    def horizontal_block(self, pressed_keys, velocity=1):
+    def vertical_block(self, pressed_keys, velocity=1):
         if pressed_keys[K_UP]:
             self.rect.move_ip(0, velocity)
         if pressed_keys[K_DOWN]:
             self.rect.move_ip(0, -velocity)
 
-    def vertical_block(self, pressed_keys, velocity=1):
+    def horizontal_block(self, pressed_keys, velocity=5):
         if pressed_keys[K_LEFT]:
             self.rect.move_ip(velocity, 0)
         if pressed_keys[K_RIGHT]:

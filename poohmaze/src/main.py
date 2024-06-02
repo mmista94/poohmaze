@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import enum
 import os
 import pygame
-# from maze import Maze
-# from loops import GameLoop
 from characters import Characters
-from maze import maze_factory, Maze
-# from maze import Maze, maze_factory
+from maze import CellFrontend, maze_factory, Maze
 
 def start_game():
-    game = PoohMaze.start()
+    app = PoohMaze.create()
+    app.start()
 
 class GameState(enum.Enum):
     """
@@ -26,8 +24,8 @@ class GameState(enum.Enum):
     initializing_maze = "initializing_maze"
     display_initialized = "display_initialized"
     initialized = "initialized"
-    game_playing = "game_playing"
-    game_ended = "game_ended"
+    gameplay = "gameplay"
+    resizing = "resizing"
     quitting = "quitting"
     
 
@@ -55,11 +53,21 @@ class Loop:
             ) or event.type == pygame.QUIT:
                 self.set_state(GameState.quitting)
             # Delegate the event to a sub-event handler `handle_event`
+            if event.type == pygame.WINDOWRESIZED:
+                self.set_state(GameState.resizing)
         pressed_keys = pygame.key.get_pressed()
         self.handle_event(pressed_keys)
 
     def loop(self):
         while self.state != GameState.quitting:
+            if self.state == GameState.resizing:
+                size = self.display.screen.get_size()
+                self.display.resize(size)
+                self.poohmaze.game.maze.update_video(
+                    self.display.screen.get_size()
+                )  
+                self.display.screen.fill((255, 255, 255))
+                self.set_state(GameState.gameplay)
             self.handle_events()
             
 
@@ -73,12 +81,14 @@ class Loop:
         self.poohmaze.set_state(new_state)
 
     @property
-    def screen(self):
+    def display(self):
         return self.poohmaze.display
 
     @property
     def state(self):
         return self.poohmaze.state
+    
+
 
 
 @dataclass
@@ -97,29 +107,39 @@ class Display:
         )
         return screen
     
+    def resize(self, size):
+        self.rect = pygame.Rect(0, 0, size[0], size[1])  
+        window_style = pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE
+        self.screen = pygame.display.set_mode(size, window_style)
+        pygame.display.update()
+    
 @dataclass
 class Game:
 
     maze: Maze
     characters: Characters
-    loop: GameLoop
-    # all_sprites = pygame.sprite.Group()
-    # all_sprites = pygame.sprite.Group()
-    # borders_sprites = pygame.sprite.Group()
-    # enemies_sprites = pygame.sprite.Group()
+    gameloop: MazeLoop
+    sprites: pygame.sprite.Group = field(init=False, default_factory=pygame.sprite.Group)
 
     @classmethod
-    def create(cls, maze_config, display, engine):
-        # maze = Maze.create(maze_config, display)
+    def create(cls, maze_config, engine):
         maze = maze_factory(maze_config)
         characters = Characters.generate_characters()
         game = cls(
             maze=maze,
             characters=characters,
-            loop = GameLoop(engine)
+            gameloop = MazeLoop(engine)
         )
-        game.maze.update_video(display)
+        game.maze.generate()
+        game.collect_sprites()
         return game
+    
+    def collect_sprites(self):
+        self.sprites.add(self.maze.borders.sprites())
+        self.sprites.add(self.characters.all_chars.sprites())
+    
+    def loop(self):
+        self.gameloop.loop()
     
 @dataclass
 class PoohMaze:
@@ -130,19 +150,32 @@ class PoohMaze:
     state: GameState
 
     @classmethod
-    def start(cls):  
+    def create(cls):  
         pygame.init()
-        game = cls(
+        poohmaze = cls(
             display=None,
             game=None,
             config=None,
             state=GameState.starting
         )
-        game.init_config()
-        game.init_display()
-        game.init_game_backend(game.config['maze_config'])
-        game.loop()
-        return game
+        poohmaze.init_config()
+        poohmaze.init_display()
+        poohmaze.init_game_backend(
+            poohmaze.config['maze_config']
+        )
+        poohmaze.update_size()
+        return poohmaze
+    
+    def start(self):
+        self.loop()
+
+    def update_size(self):
+        self.game.maze.update_video(
+            self.display.screen.get_size()
+        )
+        cell_size = self.game.maze.cell_dimensions
+        for entity in self.game.characters.all_chars:
+            entity.scale(cell_size)
 
     def init_config(self):
         self.assert_state_is(GameState.starting)
@@ -161,16 +194,16 @@ class PoohMaze:
         #######################################
         rect = pygame.Rect(0, 0, width, height)
         self.display = Display.create(rect, start_fullscreen)
-        window_style = pygame.FULLSCREEN if self.display.fullscreen else 0
+        window_style = pygame.FULLSCREEN if self.display.fullscreen else pygame.RESIZABLE
         self.display.screen = pygame.display.set_mode(rect.size, window_style)
         self.display.screen.fill((255, 255, 255))
+        # pygame.display.flip()
         self.set_state(GameState.display_initialized)
 
     def init_game_backend(self, maze_config=None):
         self.assert_state_is(GameState.display_initialized)
-        self.game = Game.create(maze_config, self.display, self)
-        # self.set_state(GameState.initialized)
-        self.set_state(GameState.game_playing)
+        self.game = Game.create(maze_config, self)
+        self.set_state(GameState.gameplay)
     
     def set_state(self, new_state):
         self.state = new_state
@@ -186,25 +219,18 @@ class PoohMaze:
                 f"Expected the game state to be one of {expected_states} not {self.state}"
             )
 
-    def loop(self, ):
-        while self.state != GameState.quitting:
-            if self.state == GameState.game_playing:
-                self.game.loop.loop()
-        #self.quit()
+    def loop(self):
+        self.game.loop()
 
 
-class GameLoop(Loop):
+class MazeLoop(Loop):
     
     def handle_event(self, pressed_keys):
+        self.display.screen.fill((255, 255, 255))
         self.move_player(pressed_keys)
-        display = self.poohmaze.display
-        display.screen.blit(display.screen, display.screen_rect)
-        self.poohmaze.game.maze.borders = pygame.sprite.Group()
-        self.poohmaze.game.maze.collect_borders()
-        self.poohmaze.game.maze.update_cell_dimensions(display)
-        self.poohmaze.game.maze.blit(display)
+        for entity in self.game.sprites:
+            self.display.screen.blit(entity.surf, entity.rect)
         pygame.display.flip()
-        # self.move_npcs()
 
     def move_player(self, pressed_keys):
         player = self.poohmaze.game.characters.player
@@ -215,7 +241,12 @@ class GameLoop(Loop):
                     False, 
                     pygame.sprite.collide_mask
             )
-        player.move(pressed_keys, collision_detector)
+        if any(pressed_keys):
+            player.move(pressed_keys, collision_detector)
+
+    @property
+    def game(self):
+        return self.poohmaze.game
 
 if __name__=='__main__':
     start_game()
