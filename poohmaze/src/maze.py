@@ -3,10 +3,7 @@ from dataclasses import dataclass, field
 import random
 from collections import deque
 import weakref
-
 import pygame
-
-# from poohmaze.src.main import Display
 
 
 def get_opposite_direction(direction) -> str:
