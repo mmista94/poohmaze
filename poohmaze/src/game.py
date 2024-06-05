@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pygame 
 from configparser import ConfigParser
 from dataclasses import dataclass, field
@@ -16,7 +18,10 @@ class Display:
 
     def __post_init__(self):
         window_style = pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE
-        self.screen = pygame.display.set_mode(self.rect.size, window_style)
+        self.screen = pygame.display.set_mode(
+            self.screen_rect.size, 
+            window_style
+        )
         self.screen.fill((255, 255, 255))
 
     @classmethod
@@ -28,7 +33,8 @@ class Display:
         )
         return screen
     
-    def resize(self, size):
+    def resize(self):
+        size = self.screen.get_size()
         self.rect = pygame.Rect(0, 0, size[0], size[1])  
         window_style = pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE
         self.screen = pygame.display.set_mode(size, window_style)
@@ -67,12 +73,91 @@ class Game:
 
 
 @dataclass
+class Loop:
+    poohmaze: PoohMaze
+
+    def handle_events(self):
+        """
+        Sample event handler that ensures quit events and normal
+        event loop processing takes place. Without this, the game will
+        hang, and repaints by the operating system will not happen,
+        causing the game window to hang.
+        """
+        for event in pygame.event.get():
+            if (
+                event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+            ) or event.type == pygame.QUIT:
+                self.set_state(GameState.quitting)
+            # Delegate the event to a sub-event handler `handle_event`
+            if event.type == pygame.WINDOWRESIZED:
+                self.display.resize()
+                self.poohmaze.update_game_geometry()
+        self.handle_event()
+
+    def loop(self):
+        while self.state != GameState.quitting:
+            if self.state == GameState.gameplay:
+                if not isinstance(self.poohmaze.gameloop, MazeLoop):
+                    self.poohmaze.gameloop = MazeLoop(self.poohmaze)
+            self.poohmaze.gameloop.handle_events()
+            
+
+    def handle_event(self, event):
+        """
+        Handles a singular event, `event`.
+        """
+
+    # Convenient shortcuts.
+    def set_state(self, new_state):
+        self.poohmaze.set_state(new_state)
+
+    @property
+    def display(self):
+        return self.poohmaze.display
+
+    @property
+    def state(self):
+        return self.poohmaze.state
+    
+
+class MazeLoop(Loop):
+    
+    def handle_event(self):
+        self.display.screen.fill((255, 255, 255))
+        self.move_player()
+        for entity in self.game.sprites:
+            self.display.screen.blit(entity.surf, entity.rect)
+        pygame.display.flip()
+
+    def move_player(self):
+        player = self.game.characters.player
+        def collision_detector(x):
+            return pygame.sprite.spritecollide(
+                    x, 
+                    self.game.maze.borders, 
+                    False, 
+                    pygame.sprite.collide_mask
+            )
+        pressed_keys = pygame.key.get_pressed()
+        if any(pressed_keys):
+            player.move(pressed_keys, collision_detector)
+
+    @property
+    def game(self):
+        return self.poohmaze.game
+
+
+@dataclass
 class PoohMaze:
 
     display: Display
     game: Game
     config: ConfigParser
     state: GameState
+    gameloop: Loop = field(init=False)
+
+    def __post_init__(self):
+        self.gameloop = Loop(self)
 
     @classmethod
     def create(cls):  
@@ -88,14 +173,14 @@ class PoohMaze:
         poohmaze.init_game_backend(
             poohmaze.config['maze_config']
         )
-        poohmaze.update_size()
+        poohmaze.update_game_geometry()
         return poohmaze
     
-    def start(self):
-        # self.loop()
-        print('success!')
+    def start(self): 
+        self.gameloop = Loop(self)
+        self.gameloop.loop()
 
-    def update_size(self):
+    def update_game_geometry(self):
         size = self.display.screen.get_size()
         self.game.update_geometry(size)
 

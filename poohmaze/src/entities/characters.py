@@ -35,14 +35,8 @@ class Characters:
 
 class Enemies(pygame.sprite.Group):
 
-    def add_enemies(self, enemies_config):
-        badmans = enemies_config['badmans']
-        for badman_config in badmans:
-            bitmap_path = badman_config[0]
-            coordinates = badman_config[1]
-            badman = Badman(bitmap_path, coordinates)
-            self.add(badman)
-        
+    def add_enemies(self)
+        badman = Badman()
     
 
 class MazeRunner(pygame.sprite.Sprite):
