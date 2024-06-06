@@ -24,6 +24,7 @@ class Characters:
     def generate_characters(cls, enemies_input=None):
         player = Player(r'poohmaze\assets\coala_tigger_bigger.png')
         enemies: Enemies = Enemies()
+        badman = Badman(r'poohmaze\assets\badman.png', )
         # enemies.add_enemies(enemies_input)
         chars = cls(
             player, enemies
@@ -35,7 +36,7 @@ class Characters:
 
 class Enemies(pygame.sprite.Group):
 
-    def add_enemies(self)
+    def add_enemies(self):
         badman = Badman()
     
 
@@ -46,6 +47,7 @@ class MazeRunner(pygame.sprite.Sprite):
         self.surf = pygame.image.load(bitmap_path).convert_alpha()
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
+        self.velocity = 2
 
     def scale(self, cell_size, scaling_factor = 0.8):
         size = scaling_factor * cell_size[0], scaling_factor * cell_size[1]
@@ -103,40 +105,27 @@ class Badman(MazeRunner):
 
     def __init__(self, bitmap_path: str, coordinates: tuple) -> None:
         super().__init__(bitmap_path)
-        self.maze_coordinates: tuple = coordinates
-        self.is_moving = False
+        self.rect.center = coordinates
+        self.is_waiting_for_target = True
         self.target = None
-        self.movement_mode = None
-        self.direction = None
 
-    def move(self, velocity=1):
-        if self.direction=='l':
-            self.rect.move_ip(-velocity, 0)
-        elif self.direction=='r':
-            self.rect.move_ip(velocity, 0)
-        elif self.direction=='t':
-            self.rect.move_ip(0, -velocity)
-        elif self.direction=='b':
-            self.rect.move_ip(0, velocity)
-    
-    def compute_target(
-            self, 
-            x, 
-            y, 
-            dir, 
-            cell_height, 
-            cell_width
-        ):
-        if dir=='t':
-            y = y - cell_height
-        elif dir=='b':
-            y = y + cell_height
-        elif dir=='l':
-            x = x - cell_width
-        elif dir=='r':
-            x = x + cell_width
-        return x, y
+    def move(self):
+        dx = self.target[0] - self.rect.center[0]
+        dy = self.target[1] - self.rect.center[1]
+        distance = (dx**2 + dy**2)**0.5
+        if distance > self.velocity:
+            # Calculate the movement vector
+            move_x = (dx / distance) * self.velocity
+            move_y = (dy / distance) * self.velocity
             
+            # Update the position
+            self.rect.center[0] += move_x
+            self.rect.center[1] += move_y
+        else:
+            # If the distance is less than the speed, move directly to the target
+            self.rect.center[0] = self.target[0]
+            self.rect.center[0] = self.target[0]
+            self.is_waiting_for_target = True
 
 
 
