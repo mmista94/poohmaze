@@ -1,13 +1,17 @@
 from __future__ import annotations
+import random
 
 import pygame 
 from configparser import ConfigParser
 from dataclasses import dataclass, field
 import os
-from entities import Characters, Maze, maze_factory
+from objects import Characters, Maze, maze_factory
 from misc import GameState, StateError
 
+from objects.characters import DESIRED_FPS
 
+
+# DESIRED_FPS = 60
 
 @dataclass
 class Display:
@@ -52,7 +56,7 @@ class Game:
     @classmethod
     def create(cls, maze_config):
         maze = maze_factory(maze_config)
-        characters = Characters.generate_characters()
+        characters = Characters.generate_characters(maze)
         game = cls(
             maze=maze,
             characters=characters
@@ -70,6 +74,7 @@ class Game:
         cell_size = self.maze.cell_dimensions
         for entity in self.characters.all_chars:
             entity.scale(cell_size)
+            entity.update_velocity(size)
 
 
 @dataclass
@@ -95,11 +100,14 @@ class Loop:
         self.handle_event()
 
     def loop(self):
-        while self.state != GameState.quitting:
+        clock = pygame.time.Clock()
+        while self.state != GameState.quitting: 
+            pygame.display.set_caption(f"FPS {round(clock.get_fps())}")
             if self.state == GameState.gameplay:
                 if not isinstance(self.poohmaze.gameloop, MazeLoop):
                     self.poohmaze.gameloop = MazeLoop(self.poohmaze)
             self.poohmaze.gameloop.handle_events()
+            clock.tick(DESIRED_FPS)
             
 
     def handle_event(self, event):
@@ -118,13 +126,14 @@ class Loop:
     @property
     def state(self):
         return self.poohmaze.state
-    
+
 
 class MazeLoop(Loop):
     
     def handle_event(self):
         self.display.screen.fill((255, 255, 255))
         self.move_player()
+        self.move_badmans()
         for entity in self.game.sprites:
             self.display.screen.blit(entity.surf, entity.rect)
         pygame.display.flip()
@@ -132,15 +141,39 @@ class MazeLoop(Loop):
     def move_player(self):
         player = self.game.characters.player
         def collision_detector(x):
-            return pygame.sprite.spritecollide(
+            collisions = []
+            if borders:=pygame.sprite.spritecollide(
                     x, 
                     self.game.maze.borders, 
                     False, 
+                    pygame.sprite.collide_rect
+            ):
+                collisions = pygame.sprite.spritecollide(
+                    x, 
+                    borders, 
+                    False, 
                     pygame.sprite.collide_mask
             )
+                return collisions
         pressed_keys = pygame.key.get_pressed()
         if any(pressed_keys):
             player.move(pressed_keys, collision_detector)
+
+    def move_badmans(self):
+        for enemy in self.game.characters.enemies:
+            if enemy.is_waiting_for_target:
+                position = enemy.rect.center
+                row_column = self.game.maze.point_to_cell(position)
+                current_cell = self.game.maze.grid(*row_column)
+                paths = current_cell.logic.get_paths()
+                dir = random.choice(paths)
+                new_cell = self.game.maze.adjacent_cell(current_cell, dir)
+                enemy.target = new_cell.visual.get_center()
+                enemy.is_waiting_for_target = False
+            else:
+                enemy.move()
+                
+
 
     @property
     def game(self):

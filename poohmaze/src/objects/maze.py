@@ -114,6 +114,11 @@ class CellFrontend():
     @property
     def coordinates(self):
         return self.cell().coordinates
+    
+    def get_center(self):
+        x = self.coordinates[0] + self.size[0]/2
+        y = self.coordinates[1] + self.size[1]/2
+        return x, y
 
     def update(self):
         for border in self.borders: 
@@ -297,6 +302,12 @@ class Maze:
         for row in self._grid:
             for cell in row:
                 self.borders.add(cell.visual.borders.sprites())
+
+    def point_to_cell(self, point: tuple[float, float]):
+        row = int(point[1]/self.cell_dimensions[1])
+        column = int(point[0]/self.cell_dimensions[0])
+        return row, column
+
     
 
 def maze_factory(config):
