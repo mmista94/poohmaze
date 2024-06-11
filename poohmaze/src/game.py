@@ -9,6 +9,7 @@ from objects import Characters, Maze, maze_factory
 from misc import GameState, StateError
 
 from objects.characters import DESIRED_FPS
+from objects.maze import get_opposite_direction
 
 
 # DESIRED_FPS = 60
@@ -54,15 +55,18 @@ class Game:
                                          default_factory=pygame.sprite.Group)
 
     @classmethod
-    def create(cls, maze_config):
+    def create(cls, maze_config, size):
         maze = maze_factory(maze_config)
+        maze.generate()
+        # maze.update_video(size)
+        # cell_size = maze.cell_dimensions
         characters = Characters.generate_characters(maze)
         game = cls(
             maze=maze,
             characters=characters
         )
-        game.maze.generate()
         game._collect_sprites()
+        game.update_geometry(size)
         return game
     
     def _collect_sprites(self):
@@ -73,8 +77,8 @@ class Game:
         self.maze.update_video(size)
         cell_size = self.maze.cell_dimensions
         for entity in self.characters.all_chars:
-            entity.scale(cell_size)
-            entity.update_velocity(size)
+            entity.update_geometry(size, cell_size)
+            entity.previous_size = size
 
 
 @dataclass
@@ -140,24 +144,17 @@ class MazeLoop(Loop):
 
     def move_player(self):
         player = self.game.characters.player
-        def collision_detector(x):
-            collisions = []
-            if borders:=pygame.sprite.spritecollide(
-                    x, 
-                    self.game.maze.borders, 
-                    False, 
-                    pygame.sprite.collide_rect
-            ):
-                collisions = pygame.sprite.spritecollide(
-                    x, 
-                    borders, 
-                    False, 
-                    pygame.sprite.collide_mask
-            )
-                return collisions
+        borders = self.game.maze.borders
         pressed_keys = pygame.key.get_pressed()
         if any(pressed_keys):
-            player.move(pressed_keys, collision_detector)
+            player.move(pressed_keys, borders)
+        pygame.sprite.spritecollide(
+            player,
+            self.game.characters.targets,
+            True,
+            pygame.sprite.collide_mask
+        )
+
 
     def move_badmans(self):
         for enemy in self.game.characters.enemies:
@@ -166,14 +163,25 @@ class MazeLoop(Loop):
                 row_column = self.game.maze.point_to_cell(position)
                 current_cell = self.game.maze.grid(*row_column)
                 paths = current_cell.logic.get_paths()
+                if enemy.direction:
+                    if (o_d:=get_opposite_direction(enemy.direction)) in paths:
+                        if len(paths) > 1:
+                            random_number = random.uniform(0, 1)
+                            if random_number < 0.9:
+                                paths.remove(o_d)
                 dir = random.choice(paths)
+                enemy.direction = dir
                 new_cell = self.game.maze.adjacent_cell(current_cell, dir)
                 enemy.target = new_cell.visual.get_center()
                 enemy.is_waiting_for_target = False
             else:
-                enemy.move()
-                
-
+                enemy.move() 
+            pygame.sprite.spritecollide(
+                enemy,
+                self.game.characters.players,
+                True,
+                pygame.sprite.collide_mask
+            )
 
     @property
     def game(self):
@@ -237,7 +245,7 @@ class PoohMaze:
     def init_game_backend(self, maze_config=None):
         self.assert_state_is(GameState.display_initialized)
         # self.game = Game.create(maze_config, self)
-        self.game = Game.create(maze_config)
+        self.game = Game.create(maze_config, self.display.screen.get_size())
         self.set_state(GameState.gameplay)
     
     def set_state(self, new_state):
