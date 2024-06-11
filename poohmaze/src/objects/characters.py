@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from math import sqrt
 from typing import Any, Iterable
 import pygame
+from pygame.math import Vector2
 
 # from ..game import DESIRED_FPS
 # Import pygame.locals for easier access to key coordinates
@@ -12,7 +13,11 @@ from pygame.locals import (
     K_UP,
     K_DOWN,
     K_LEFT,
-    K_RIGHT
+    K_RIGHT,
+    K_w,
+    K_s,
+    K_a,
+    K_d
 )
 from pygame.sprite import AbstractGroup
 
@@ -31,21 +36,40 @@ class Characters:
         init=False, 
         default_factory=pygame.sprite.Group
     )
+    players_backup: list = field(
+        init=False, 
+        default_factory=list
+    )
 
     @classmethod
     def generate_characters(cls, maze: Maze):
         player = Player(r'poohmaze\assets\coala_tigger_bigger.png')
+        # player_two = Player(r'poohmaze\assets\pingwin.png', True)
         players = pygame.sprite.Group()
         players.add(player)
+        # players.add(player_two)
         enemies: Enemies = Enemies(maze=maze)
         targets: Targets = Targets(maze=maze)
         chars = cls(
             player, enemies, players, targets
         )
-        chars.all_chars.add(chars.player)
+        chars.players_backup.append(player)
+        # chars.players_backup.append(player_two)
+        chars.all_chars.add(chars.players.sprites())
         chars.all_chars.add(chars.enemies.sprites())
         chars.all_chars.add(chars.targets.sprites())
         return chars
+    
+    def reset_player(self, player, cell_size):
+        player.set_starting_position(cell_size)
+        self.players.add(player)
+        self.all_chars.add(player)
+
+    def reset_targets(self):
+        for target in self.targets.backup:
+            self.targets.add(target)
+        self.all_chars.add(self.targets.sprites())       
+
 
 
 class Enemies(pygame.sprite.Group):
@@ -64,6 +88,7 @@ class Targets(pygame.sprite.Group):
 
     def __init__(self, maze, *sprites: Any | AbstractGroup | Iterable) -> None:
         super().__init__(*sprites)
+        self.backup: list[MazeRunner] = []
         self.add_targets(maze)
 
     def add_targets(self, maze: Maze, number: int = 5):
@@ -71,6 +96,7 @@ class Targets(pygame.sprite.Group):
             target = MazeRunner(r'poohmaze\assets\star.png')
             target.starting_coordinates = maze.random_location()
             self.add(target)
+            self.backup.append(target)
     
 
 class MazeRunner(pygame.sprite.Sprite):
@@ -81,6 +107,8 @@ class MazeRunner(pygame.sprite.Sprite):
         super().__init__()
         self.bitmap = pygame.image.load(bitmap_path).convert_alpha()
         self.surf = self.bitmap
+        self.position: Vector2 = None
+        self.velocity = Vector2(0,0)
         # self.scale(cell_size=cell_size)
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
@@ -106,9 +134,10 @@ class MazeRunner(pygame.sprite.Sprite):
         if not self.previous_size:
             self.previous_size = size
             self.set_starting_position(cell_size)
-        x = size[0] * self.rect.center[0] / self.previous_size[0]
-        y = size[1] * self.rect.center[1] / self.previous_size[1]
-        self.rect.center = x, y
+        x = size[0] * self.position.x / self.previous_size[0]
+        y = size[1] * self.position.y / self.previous_size[1]
+        self.position = Vector2(x, y)
+        self.rect.center = self.position.x, self.position.y
 
     def update_velocity(self, size: tuple):
         self.speed_y = (size[1] / 200) / (DESIRED_FPS/60)
@@ -117,29 +146,45 @@ class MazeRunner(pygame.sprite.Sprite):
     def set_starting_position(self, cell_size):
         x = cell_size[0]*(self.starting_coordinates[0] + 0.5)
         y = cell_size[1]*(self.starting_coordinates[1] + 0.5)
-        self.rect.center = x, y
+        self.position = pygame.Vector2(x, y)
+        self.rect.center = self.position.x, self.position.y
         # raise NotImplementedError
 
 
 class Player(MazeRunner):
 
+    def __init__(self, bitmap_path: str, letters = False) -> None:
+        super().__init__(bitmap_path)
+        self.up = K_UP
+        self.down = K_DOWN
+        self.left = K_LEFT
+        self.right = K_RIGHT
+        if letters:
+            self.up = K_w
+            self.down = K_s
+            self.right = K_d
+            self.left = K_a
+
     def set_starting_position(self, cell_size):
-        self.rect.center = cell_size[0]/2, cell_size[1]/2
+        x = cell_size[0]/2
+        y = cell_size[1]/2
+        self.position = Vector2(x, y)
+        self.rect.center = self.position.x, self.position.y
 
     # Move the sprite based on keypresses
     def vertical_move(self, pressed_keys, velocity=1):
         # velocity = self.velocity * velocity
-        if pressed_keys[K_UP]:
+        if pressed_keys[self.up]:
             self.rect.move_ip(0, -velocity)
-        if pressed_keys[K_DOWN]:
+        if pressed_keys[self.down]:
             self.rect.move_ip(0, velocity)
 
     # Move the sprite based on keypresses
     def horizontal_move(self, pressed_keys, velocity=1):
         # velocity = self.velocity * velocity
-        if pressed_keys[K_LEFT]:
+        if pressed_keys[self.left]:
             self.rect.move_ip(-velocity, 0)
-        if pressed_keys[K_RIGHT]:
+        if pressed_keys[self.right]:
             self.rect.move_ip(velocity, 0)
 
     def check_borders_collisions(self, borders):
@@ -167,8 +212,8 @@ class Player(MazeRunner):
 
     def compute_velocity(self, pressed_keys):
         # absolute_v = self.velocity * absolute_v
-        is_vertical = (pressed_keys[K_UP] or pressed_keys[K_DOWN])
-        is_horizontal = (pressed_keys[K_LEFT] or pressed_keys[K_RIGHT])
+        is_vertical = (pressed_keys[self.up] or pressed_keys[self.down])
+        is_horizontal = (pressed_keys[self.left] or pressed_keys[self.right])
         if is_horizontal and is_vertical:
             # velocity = self.speed_x / sqrt(2), self.speed_y / sqrt(2)
             velocity = self.speed_x/sqrt(2), self.speed_y/sqrt(2)
@@ -180,16 +225,16 @@ class Player(MazeRunner):
 
     def vertical_block(self, pressed_keys, velocity=1):
         # velocity = self.velocity * velocity
-        if pressed_keys[K_UP]:
+        if pressed_keys[self.up]:
             self.rect.move_ip(0, velocity)
-        if pressed_keys[K_DOWN]:
+        if pressed_keys[self.down]:
             self.rect.move_ip(0, -velocity)
 
     def horizontal_block(self, pressed_keys, velocity=1):
         # velocity = self.velocity * velocity
-        if pressed_keys[K_LEFT]:
+        if pressed_keys[self.left]:
             self.rect.move_ip(velocity, 0)
-        if pressed_keys[K_RIGHT]:
+        if pressed_keys[self.right]:
             self.rect.move_ip(-velocity, 0)
 
 
@@ -205,7 +250,8 @@ class Badman(MazeRunner):
     def set_starting_position(self, cell_size):
         x = cell_size[0]*(self.starting_coordinates[0] + 0.5)
         y = cell_size[1]*(self.starting_coordinates[1] + 0.5)
-        self.rect.center = x, y
+        self.position = Vector2(x, y)
+        self.rect.center = self.position.x, self.position.y
 
     def move(self):
         dx = self.target[0] - self.rect.center[0]

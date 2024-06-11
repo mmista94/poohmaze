@@ -69,7 +69,15 @@ class Game:
         game.update_geometry(size)
         return game
     
+    def reset(self, size: tuple[float, float]):
+        self.maze.reset()
+        self.maze.generate()
+        self.characters = Characters.generate_characters(self.maze)
+        self._collect_sprites()
+        self.update_geometry(size)
+    
     def _collect_sprites(self):
+        self.sprites = pygame.sprite.Group()
         self.sprites.add(self.maze.borders.sprites())
         self.sprites.add(self.characters.all_chars.sprites())
 
@@ -136,25 +144,37 @@ class MazeLoop(Loop):
     
     def handle_event(self):
         self.display.screen.fill((255, 255, 255))
-        self.move_player()
-        self.move_badmans()
+        self.move_characters()
+        self.reset_players()
+        if not self.game.characters.targets:
+            self.game.reset(self.display.screen.get_size())
+        self.game.sprites.add(self.game.characters.all_chars.sprites())
         for entity in self.game.sprites:
             self.display.screen.blit(entity.surf, entity.rect)
         pygame.display.flip()
 
-    def move_player(self):
-        player = self.game.characters.player
+    def reset_players(self):
+        for player in self.game.characters.players_backup:
+            if player not in self.game.sprites:
+                self.game.characters.reset_player(player, self.game.maze.cell_dimensions)     
+                self.game.characters.reset_targets()
+
+    def move_characters(self):
+        self.move_players()
+        self.move_badmans()
+
+    def move_players(self):
         borders = self.game.maze.borders
         pressed_keys = pygame.key.get_pressed()
-        if any(pressed_keys):
-            player.move(pressed_keys, borders)
-        pygame.sprite.spritecollide(
-            player,
-            self.game.characters.targets,
-            True,
-            pygame.sprite.collide_mask
-        )
-
+        for player in self.game.characters.players:
+            if any(pressed_keys):
+                player.move(pressed_keys, borders)
+            pygame.sprite.spritecollide(
+                player,
+                self.game.characters.targets,
+                True,
+                pygame.sprite.collide_mask
+            )
 
     def move_badmans(self):
         for enemy in self.game.characters.enemies:
