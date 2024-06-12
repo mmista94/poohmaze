@@ -23,7 +23,7 @@ from pygame.sprite import AbstractGroup
 
 from .maze import Maze
 
-DESIRED_FPS = 60
+DESIRED_FPS = 100
 
 @dataclass
 class Characters:
@@ -107,12 +107,12 @@ class MazeRunner(pygame.sprite.Sprite):
         super().__init__()
         self.bitmap = pygame.image.load(bitmap_path).convert_alpha()
         self.surf = self.bitmap
-        self.position: Vector2 = None
-        self.velocity = Vector2(0,0)
+        # self.position: Vector2 = None
+        # self.velocity = Vector2(0,0)
         # self.scale(cell_size=cell_size)
         self.rect = self.surf.get_rect()
         self.mask = pygame.mask.from_surface(self.surf)
-        self.velocity = None
+        # self.velocity = None
         self.speed_x = None
         self.speed_y = None
         self.previous_size = None
@@ -131,13 +131,13 @@ class MazeRunner(pygame.sprite.Sprite):
 
     def update_position_after_resize(self, size: tuple, cell_size):
         # Calculate the new position of the object based on the resize ratio
+        # Calculate the new position of the object based on the resize ratio
         if not self.previous_size:
             self.previous_size = size
             self.set_starting_position(cell_size)
-        x = size[0] * self.position.x / self.previous_size[0]
-        y = size[1] * self.position.y / self.previous_size[1]
-        self.position = Vector2(x, y)
-        self.rect.center = self.position.x, self.position.y
+        x = size[0] * self.rect.center[0] / self.previous_size[0]
+        y = size[1] * self.rect.center[1] / self.previous_size[1]
+        self.rect.center = x, y
 
     def update_velocity(self, size: tuple):
         self.speed_y = (size[1] / 200) / (DESIRED_FPS/60)
